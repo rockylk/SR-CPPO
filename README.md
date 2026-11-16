@@ -4,8 +4,6 @@
 
 Modular implementations of SR-CPPO, five comparison methods, and component ablations on OpTC. The main method uses the same training and evaluation code for OpTC and DAPT 2020, with dataset selection through command-line arguments.
 
-[中文说明](README.zh-CN.md)
-
 ## Project structure
 
 ```text

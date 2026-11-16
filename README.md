@@ -1,95 +1,117 @@
-# SR-CPPO: Survivability-Oriented and Extreme Risk-Aware Autonomous Cyber Defense
+# SR-CPPO
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C.svg)](https://pytorch.org/)
+[Previous code snapshot](https://github.com/rockylk/SR-CPPO/tree/archive/pre-update-20261116)
 
-This repository provides the official implementation of **SR-CPPO (Safe-Reinforcement Constrained Proximal Policy Optimization)**, a survivability-oriented, extreme tail-risk-aware defense framework designed for autonomous cyber defense against Advanced Persistent Threats (APTs) in mission-critical enterprise networks.
+Modular implementations of SR-CPPO, five comparison methods, and component ablations on OpTC. The main method uses the same training and evaluation code for OpTC and DAPT 2020, with dataset selection through command-line arguments.
 
-## 📖 Overview
+[中文说明](README.zh-CN.md)
 
-Modern enterprise and government networks operate under stringent Service Level Agreements (SLAs), prioritizing uninterrupted business operations. While existing deep reinforcement learning (DRL) methods offer adaptive defense, they are often risk-blind, leading to rare but catastrophic defense actions (e.g., severe service disruption). 
-
-**SR-CPPO** addresses this by formulating the defense strategy as a Conditional Value-at-Risk (CVaR)-constrained Partially Observable Markov Decision Process (CPOMDP). It integrates:
-- **Business-Aware Survivability Modeling**: Maps service criticality to network assets.
-- **Tail-Risk-Aware Policy Optimization**: Suppresses extreme disruption risks via CVaR constraints.
-- **Adaptive PID-Lagrangian Regulation**: Ensures stable and robust multi-objective optimization.
-- **Dynamic Safety Fallback**: Prevents catastrophic defense failures and policy collapse.
-
-## 📂 Repository Structure
-
-The repository is modularized into three main components:
+## Project structure
 
 ```text
-.
-├── SR-CPPO-code/         # Official SR-CPPO implementation
-│   ├── src/              # Core modules (envs, models, agents, utils)
-│   ├── main.py           # Training entry point
-│   └── requirements.txt  
-├── baseline/             # 5 State-of-the-art Baseline implementations
-│   ├── CPO/              # Constrained Policy Optimization
-│   ├── CPPO-PID/         # CPPO with PID-Lagrangian
-│   ├── CVaR-PPO/         # PPO with CVaR penalties
-│   ├── PPO/              # Unconstrained Proximal Policy Optimization
-│   └── Rule-Based/       # Static Rule-Based Defense
-└── Data/                 # High-fidelity telemetry datasets
-    ├── optc_ot_sequence_benign2.npy
-    └── optc_ot_sequence_malicious2.npy
+SR-CPPO/
+├── run.py                         # Entry point for SR-CPPO and baselines
+├── run_ablation.py                # Entry point for OpTC ablations
+├── requirements.txt
+├── data/
+│   ├── optc/                      # OpTC feature arrays
+│   └── dapt2020/                  # DAPT 2020 features and optional labels
+└── cyberdefense/
+    ├── common/                    # Data validation, paths, and logging
+    ├── methods/
+    │   ├── sr_cppo/
+    │   ├── ppo/
+    │   ├── cpo/
+    │   ├── cppo_pid/
+    │   ├── cvar_ppo/
+    │   └── rule_based/
+    └── ablation/                  # Component variants, training, evaluation, and resume support
 ```
-> **Note**: Both `SR-CPPO-code` and the `baseline` implementations follow an identical, highly structured architecture (`envs`, `models`, `agents`, `utils`) for fair comparison and easy extensibility.
 
-## ⚙️ Installation
+Each learning method is organized into `models.py`, `environment.py`, `risk.py`, `agent.py`, `training.py`, `evaluation.py`, and `runner.py`. The `runtime.py` module handles random seeds and logging. Rule-Based has no training module because it does not train a network. For ablations, `io.py` manages checkpoints, and `base_agent.py` contains the SR-CPPO core used by the variants.
 
-We recommend using a virtual environment (e.g., Anaconda, `venv`, or `uv`).
+## Environment
+
+Use Python 3.10–3.12. Activate your PyTorch environment and run the following command from this directory:
 
 ```bash
-# Clone the repository
-git clone https://github.com/YourUsername/SR-CPPO.git
-cd SR-CPPO
-
-# Install dependencies (from the SR-CPPO-code directory)
-cd SR-CPPO-code
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-*Key Dependencies:* `torch`, `numpy`, `scipy`
+An existing GPU-enabled PyTorch installation can be used directly. The entry point selects the GPU when CUDA is available. Use `--device cpu` to run on the CPU and `--threads 1` to limit CPU threads. Run metadata records the Python, NumPy, and PyTorch versions and the device used.
 
-## 🚀 Usage
+## Data
 
-### 1. Running SR-CPPO
-To train the SR-CPPO agent from scratch, navigate to the `SR-CPPO-code/` directory and execute the main entry point:
+| Dataset | Benign feature file | Malicious feature file | Shapes: benign / malicious |
+|---|---|---|---|
+| OpTC | `data/optc/optc_ot_sequence_benign2.npy` | `data/optc/optc_ot_sequence_malicious2.npy` | 24,988 × 16 / 3,338 × 16 |
+| DAPT 2020 | `data/dapt2020/dapt_ot_sequence_benign2.npy` | `data/dapt2020/dapt_ot_sequence_malicious2.npy` | 17,018 × 16 / 1,026 × 16 |
+
+Training uses the 16-dimensional arrays produced by the existing extraction pipeline. The entry points do not re-extract or transform these inputs. The `dapt_ot_labels_*2.npy` files contain accompanying labels; the training environment reads the feature files listed above.
+
+Default data paths are resolved relative to the project directory, independently of the terminal's current working directory. To use data stored elsewhere, pass `--data-dir /absolute/path/to/data`. This directory must contain both feature files for the selected dataset.
+
+## SR-CPPO and baselines
+
+Run the commands below from this directory. These examples use five seeds; `--seeds` specifies one or more independent runs. Defaults are seed 42, 1,500 training episodes, 200 steps per episode, and 200 frozen-policy evaluation episodes.
 
 ```bash
-cd SR-CPPO-code
-python main.py
-```
-The script will automatically load the telemetry datasets from the `Data/` directory and begin the training loop. Training logs and safety checkpoints will be generated dynamically.
+python run.py --method sr-cppo --dataset optc --seeds 42 43 45 46 47
+python run.py --method sr-cppo --dataset dapt2020 --seeds 42 43 45 46 47
 
-### 2. Running Baselines
-To evaluate or train any of the comparative baseline models, navigate to the specific baseline directory and run its `main.py` file. For example, to run the CPO baseline:
+python run.py --method ppo --dataset optc --seeds 42 43 45 46 47
+python run.py --method cpo --dataset optc --seeds 42 43 45 46 47
+python run.py --method cppo-pid --dataset optc --seeds 42 43 45 46 47
+python run.py --method cvar-ppo --dataset optc --seeds 42 43 45 46 47
+python run.py --method rule-based --dataset optc --seeds 42 43 45 46 47
+```
+
+The baselines also support `--dataset dapt2020`. Rule-Based performs frozen evaluation directly and does not use `--train-eps`. Use `--train-eps` and `--eval-eps` to change episode counts. For all available options, run `python run.py --help`.
+
+The default output directory is `outputs/<dataset>/<method>/`. It contains logs, `run_config.json`, per-seed results, summary CSV files, and the method's checkpoints. Use `--output` to specify a different directory. Separate dataset and method directories keep identically named checkpoints from different experiments apart. For repeated runs of the same configuration, specify a new `--output` directory.
+
+SR-CPPO enables deployment fallback by default. The `--no-fallback` option disables fallback only during frozen evaluation. To evaluate existing Best-Safe weights:
 
 ```bash
-cd baseline/CPO
-python main.py
+python run.py --method sr-cppo --dataset optc --seeds 46 --eval-only --output /path/to/checkpoint_directory
 ```
 
-## 📊 Dataset (OpTC Telemetry)
-The `Data/` folder contains high-fidelity feature sequences extracted from the **OpTC (Operation Transparent Cyber)** dataset.
-- `optc_ot_sequence_benign2.npy`: Benign background operational traffic.
-- `optc_ot_sequence_malicious2.npy`: Adversarial threat patterns simulating APT attacks.
+The directory must contain `optc_v721_best_safe_seed46.pt`. SR-CPPO retains this checkpoint naming convention for compatibility with existing weights, including runs on DAPT 2020. The output directory and `run_config.json` identify the dataset. This option performs frozen evaluation; it does not resume training.
 
-## 📝 Citation
+Example background execution over SSH on Linux:
 
-If you find this code or our methodology useful in your research, please consider citing our paper:
-
-```bibtex
-@article{sr_cppo_2026,
-  title={Survivability-Oriented and Extreme Risk-Aware Autonomous Cyber Defense via SR-CPPO},
-  author={Kai  Liang, et al. },
-  journal={IEEE Transactions on ...},
-  year={2026}
-}
+```bash
+mkdir -p logs
+nohup python -u run.py --method cpo --dataset optc --seeds 42 43 45 46 47 > logs/cpo_optc.out 2>&1 < /dev/null &
 ```
 
-## 📄 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## OpTC ablations
+
+The ablation entry point provides separate configurations, step-level traces, checkpoint role validation, and training resume support. The default seeds are `42 43 45 46 47`, with the following default variants:
+
+| Variant | Component change |
+|---|---|
+| `no_decayed_cvar` | Disable temporal decay weighting |
+| `no_anti_windup` | Disable the anti-windup mechanism specified by this variant |
+| `no_fallback` | Disable fallback during training and deployment |
+| `no_best_safe` | Disable Best-Safe selection; optionally reuse the full model's Final checkpoint |
+| `no_criticality` | Use equal weights and the corresponding gating settings |
+
+```bash
+python run_ablation.py --seeds 42 43 45 46 47 --output outputs/ablation
+```
+
+```bash
+python run_ablation.py --variants no_best_safe --seeds 46 --full-manifest full_checkpoints.json --output outputs/ablation
+python run_ablation.py --variants no_criticality --seeds 46 --resume --output outputs/ablation
+```
+
+Ablations use the `indexed` evaluation protocol by default; `legacy` remains available. Run `python run_ablation.py --help` for all options. The ablation code targets OpTC and does not include a DAPT ablation configuration.
+
+## Method references
+
+- PPO: Schulman et al. (2017). *Proximal Policy Optimization Algorithms*.
+- CPO: Achiam et al. (2017). *Constrained Policy Optimization*. ICML.
+- CPPO-PID: Stooke et al. (2020). *Responsive Safety in Reinforcement Learning by PID Lagrangian Methods*. ICML.
+- CVaR-PPO: Ying et al. (2022). *Towards Safe Reinforcement Learning via Constraining Conditional Value-at-Risk*. This implementation uses an upper-tail episodic-cost constraint. Static CVaR follows the formulation of Rockafellar and Uryasev (2000).
+- Rule-Based: A static threshold response heuristic for this task. Background: Stakhanova et al. (2007), *A taxonomy of intrusion response systems*.
